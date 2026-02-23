@@ -1,0 +1,65 @@
+# GreenArb - Sovereign Deployment Manifest (Palantir Apollo)
+# Orchestrates "Follow the Sun" workload shifting between global nodes based on carbon grid intensity.
+
+apollo_manifest:
+  version: "1.0"
+  application_name: "GreenArb_Engine"
+  
+  workload_profiles:
+    - profile: "high_frequency_execution"
+      description: "Nanosecond execution cluster via Alveo FPGAs deployed at matching engine latency."
+      hardware_requirements:
+        - "AMD_Alveo_UL3524_FPGA"
+      placement_strategy: "co_located_to_exchange" # Ex: NY4 for NYSE, BKC for NSE
+
+    - profile: "heavy_computational_tasks"
+      description: "Backtesting and LLM / AI-Agent Model Training"
+      hardware_requirements:
+        - "AMD_Instinct_MI325X_GPU"
+        - "AMD_EPYC_9005_CPU"
+      placement_strategy: "carbon_intensity_optimized"
+      
+  placement_rules:
+    carbon_intensity_optimized:
+      primary_metric: "current_carbon_grid_intensity"
+      metric_unit: "gCO2/kWh"
+      evaluation_interval: "1h"
+      nodes:
+        - id: "us-east-nj"
+          region: "New York"
+          market: "NYSE"
+          default_intensity: 350
+        - id: "ap-south-chn"
+          region: "Chennai"
+          market: "NSE"
+          default_intensity: 600
+        - id: "eu-north-stk"
+          region: "Stockholm"
+          market: "GLOBAL_RESEARCH"
+          default_intensity: 40 # Hydropower dominant, extremely low intensity
+      
+      decision_logic: |
+        // Shift heavy computational workloads to node with lowest current carbon intensity
+        if (node('eu-north-stk').intensity < node('us-east-nj').intensity && 
+            node('eu-north-stk').intensity < node('ap-south-chn').intensity) {
+            deploy(profile('heavy_computational_tasks'), to('eu-north-stk'))
+        }
+
+  # "Follow the Sun" continuous orchestration schedule
+  schedule:
+    - time_window: "04:00Z-10:00Z"
+      active_market: "NSE"
+      primary_execution_node: "ap-south-chn"
+      
+    - time_window: "13:30Z-20:00Z"
+      active_market: "NYSE"
+      primary_execution_node: "us-east-nj"
+
+  # Autonomous Failover Directives
+  failover_rules:
+    regional_carbon_surge:
+      condition: "node.current_carbon_grid_intensity > 450"
+      trigger_metric: "gCO2/kWh"
+      action: |
+        log("INITIATING WORKLOAD MIGRATION TO SPAIN_NODE VIA PALANTIR APOLLO");
+        migrate_workload(to_node="eu-south-madrid", force=True);
